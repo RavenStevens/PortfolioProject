@@ -1,18 +1,16 @@
 -- Select Data that we are going to be using
+
 Select location, date, total_cases, new_cases, total_deaths, population
 From PortfolioProject..CovidDeaths
 Where continent is not null
 
---Looking at total_cases vs total_deaths
--- Shows likelihood of dying if you get Covid
+--Looking at the deathrate of Covid
 Select location, date, total_cases, total_deaths, nullif(total_deaths, 0)/nullif(total_cases, 0)*100 as DeathPercentage
 From PortfolioProject..CovidDeaths
 order by location
 
 
---Looking at total_cases vs population
---Percent of population that got Covid
-
+--Peering into infection rate
 Select location, date, population, total_cases, (nullif(total_cases, 0)/population)*100 as PopulationInfected
 From PortfolioProject..CovidDeaths
 order by location
@@ -23,16 +21,14 @@ From PortfolioProject..CovidDeaths
 Group by location, population
 order by PopulationInfected desc
 
----Break things down by continent
-
 --Show Countries with the Highest Death Count per population
-
 Select continent, MAX(cast(total_deaths as int)) as TotalDeathCount
 From PortfolioProject..CovidDeaths
 Group by continent
 order by TotalDeathCount desc
 --Data is showing null for continent
 
+--Checking out why there are null values for Continents
 Select location, MAX(cast(total_deaths as int)) as TotalDeathCount
 From PortfolioProject..CovidDeaths
 where continent is null
@@ -47,11 +43,11 @@ where continent is not null
 Group by continent
 order by TotalDeathCount desc
 
---Global Numbers Death Percentage
-Select date, sum(new_cases) as cases, sum(new_deaths) as deaths, sum(nullif(new_deaths, 0))/sum(new_cases)*100 as death_percentage
+--Global Numbers Death Rate
+Select year(date) as year, sum(new_cases) as cases, sum(new_deaths) as deaths, sum(nullif(new_deaths, 0))/sum(new_cases)*100 as death_percentage
 from PortfolioProject..CovidDeaths
 where continent is not null
-group by date
+group by year(date)
 
 -- Vaccinations by location and date
 Select dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations
@@ -97,3 +93,77 @@ where dea.continent is not null
 )
 Select *, (rolling_vaccinated/nullif(population,0))*100 as percent_vac_pop
 from pop_vac
+
+--Looking at vaccination rate by Continent
+Select max(total_vaccinations)as total_Vaccinations, continent
+from PortfolioProject..CovidVaccinations
+Where continent is not null
+group by continent
+
+--Looking at the total vaccinations for each country
+select max(total_vaccinations) as total_vaccinations, location
+from PortfolioProject..CovidVaccinations
+where continent is not null
+group by location
+
+--deathrate for each year 
+SELECT 
+  YEAR(date) AS year, 
+  sum(total_deaths) as total_deaths,
+  sum(total_cases) as total_cases,
+  SUM(COALESCE(total_deaths, 0)) / SUM(COALESCE(total_cases, 0))*100 AS death_rate
+FROM PortfolioProject..CovidDeaths
+  Where continent is not null and year(date)<>2023 --editing out 2023 since there won't be enough information on it at this time
+GROUP BY 
+  YEAR(date)
+ORDER BY 
+  year ASC
+
+  --Total death count by continent
+  select location, sum(new_deaths) as total_death_count, year(date) as year
+  from PortfolioProject..CovidDeaths
+  Where continent is null and location not in ('World', 'European Union', 'International', 'High income', 'Upper middle income', 'Lower middle income', 'Low income') and year(date)<>2023
+  group by location, year (date)
+  order by total_death_count desc
+
+  -- Percent of Population Infected
+  Select location, population, Max(total_cases) as max_infect_count, max((total_cases/population))*100 as perc_pop_infected
+  From PortfolioProject..CovidDeaths
+  Group by location, population
+  order by perc_pop_infected desc
+
+  --population vaccinated vs population infected
+ SELECT vac.continent, 
+       YEAR(vac.date) AS year,
+       (SUM(cast(vac.total_vaccinations as float))/SUM(dea.population))*100 AS percent_vaccinated
+FROM PortfolioProject..CovidVaccinations vac
+join PortfolioProject..CovidDeaths dea
+on dea.continent = vac.continent and dea.date = vac.date
+WHERE vac.continent IS NOT NULL 
+  AND vac.location NOT IN ('World', 'European Union', 'International', 'High income', 'Upper middle income', 'Lower middle income', 'Low income')
+GROUP BY vac.continent, YEAR(vac.date)
+ORDER BY percent_vaccinated DESC
+ -- looks like the year 2022 is missing
+
+ --Check to see if there is vaccination records for 2022
+ Select location, year(date), total_vaccinations
+ from PortfolioProject..CovidVaccinations
+ Where Year(date) = 2022
+ --there is no data on 2022 for vaccinations therefore it will not be added to my dashboard like originally planned
+
+ --Where in 2021 did they stop getting vaccination data?
+ Select location, date, total_vaccinations
+ from PortfolioProject..CovidVaccinations
+ Where total_vaccinations is not null 
+ order by date desc
+
+ --infection rate over time seperated by continent
+ SELECT continent, YEAR(date) as year, (MAX(COALESCE(total_deaths, 0)) / 
+  CASE 
+    WHEN MAX(COALESCE(total_cases, 0)) = 0 THEN NULL 
+    ELSE MAX(COALESCE(total_cases, 0)) 
+  END) * 100 AS infection_rate
+FROM PortfolioProject..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY YEAR(date), continent
+
